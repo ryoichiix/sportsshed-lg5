@@ -8,6 +8,9 @@ Built with **Node.js, Express and SQLite** (`better-sqlite3`).
 `GET /kits?sort=name&order=asc|desc` sorts the kits list. Allowed sort fields: `id`, `name`, `sport`.
 An unknown field returns **400** with `Cannot sort by that field`. `order` defaults to `asc`.
 
+## Requirements
+Node.js 18 or newer (LTS recommended) and an internet connection for `npm install`.
+
 ## How to run
 ```bash
 npm install
