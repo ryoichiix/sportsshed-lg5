@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SportsShed – Kit Loan Desk</title>
+<style>
+  :root{--navy:#1f2f5c;--bg:#f4f6fb;--line:#d9deea;--ok:#1b7f4b;--bad:#b3261e;--accent:#e8731a}
+  *{box-sizing:border-box} body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:var(--bg);color:#1c2333}
+  header{background:var(--navy);color:#fff;padding:16px 28px;display:flex;justify-content:space-between;align-items:center}
+  header h1{margin:0;font-size:22px} header small{opacity:.8}
+  main{max-width:1100px;margin:22px auto;padding:0 16px;display:grid;gap:18px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px}
+  h2{margin:0 0 12px;font-size:17px;color:var(--navy)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  input,select{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px}
+  button{padding:8px 14px;border:0;border-radius:6px;background:var(--navy);color:#fff;cursor:pointer;font-size:14px}
+  button.alt{background:#fff;color:var(--navy);border:1px solid var(--navy)} button.del{background:var(--bad)}
+  button.sm{padding:4px 10px;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:14px} th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left}
+  th{background:#eef1f8;color:var(--navy)} .empty{color:#777;padding:10px}
+  #toast{position:fixed;bottom:20px;right:20px;padding:12px 18px;border-radius:8px;color:#fff;display:none;max-width:360px;z-index:9}
+  .tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px}
+  .out{background:#fdeede;color:#a14b00}.in{background:#dff3e8;color:var(--ok)}
+  .twocol{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:800px){.twocol{grid-template-columns:1fr}}
+  code{background:#eef1f8;padding:1px 6px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<header><h1>🏏 SportsShed – Kit Loan Desk</h1><small>LG 5 · Group 5 · Backend Development Fundamentals</small></header>
+<main>
+  <section class="card">
+    <h2>Kits</h2>
+    <div class="row">
+      <input id="search" placeholder="Search by sport (e.g. cricket)">
+      <select id="sort"><option value="">No sorting</option><option value="name">Sort by name</option><option value="sport">Sort by sport</option><option value="id">Sort by id</option><option value="colour">Sort by colour (test 400)</option></select>
+      <select id="order"><option value="asc">Ascending (A→Z)</option><option value="desc">Descending (Z→A)</option></select>
+      <button onclick="loadKits()">Apply</button>
+      <span style="color:#666;font-size:12px">Request: <code id="reqline">GET /kits</code></span>
+    </div>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Sport</th><th></th></tr></thead><tbody id="kits"></tbody></table>
+    <div class="row" style="margin-top:14px">
+      <input id="kname" placeholder="Kit name"><input id="ksport" placeholder="Sport">
+      <button id="kbtn" onclick="saveKit()">Add kit</button><button class="alt" id="kcancel" style="display:none" onclick="resetKit()">Cancel edit</button>
+    </div>
+  </section>
+  <div class="twocol">
+    <section class="card">
+      <h2>Players</h2>
+      <table><thead><tr><th>ID</th><th>Name</th><th>Team</th></tr></thead><tbody id="players"></tbody></table>
+      <div class="row" style="margin-top:14px"><input id="pname" placeholder="Player name"><input id="pteam" placeholder="Team"><button onclick="addPlayer()">Add player</button></div>
+    </section>
+    <section class="card">
+      <h2>Issue a kit</h2>
+      <div class="row"><select id="lplayer"></select><select id="lkit"></select><button onclick="issue()">Issue</button></div>
+      <p style="font-size:13px;color:#666">A kit that is already issued cannot be issued again (409).</p>
+    </section>
+  </div>
+  <section class="card">
+    <h2>Loans <small style="color:#666;font-weight:normal">(join: player name + kit name)</small></h2>
+    <div class="row"><input id="lsearch" placeholder="Search by player name"><button class="alt" onclick="loadLoans()">Search</button></div>
+    <table><thead><tr><th>ID</th><th>Player</th><th>Kit</th><th>Issued</th><th>Status</th><th></th></tr></thead><tbody id="loans"></tbody></table>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+let editingId=null;
+const $=id=>document.getElementById(id);
+function toast(msg,ok){const t=$('toast');t.textContent=msg;t.style.background=ok?'#1b7f4b':'#b3261e';t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',3200);}
+async function api(method,path,body){
+  const res=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok){toast(`${res.status}: ${data.error||'Error'}`,false);throw new Error(data.error);}
+  return data;
+}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadKits(){
+  const q=new URLSearchParams();
+  if($('search').value.trim())q.set('sport',$('search').value.trim());
+  if($('sort').value){q.set('sort',$('sort').value);q.set('order',$('order').value);}
+  const url='/kits'+(q.toString()?'?'+q:'');$('reqline').textContent='GET '+url;
+  const res=await fetch(url);const data=await res.json();
+  if(!res.ok){toast(`${res.status}: ${data.error}`,false);return;}
+  $('kits').innerHTML=data.length?data.map(k=>`<tr><td>${k.id}</td><td>${esc(k.name)}</td><td>${esc(k.sport)}</td><td><button class="sm alt" onclick='editKit(${JSON.stringify(k)})'>Edit</button> <button class="sm del" onclick="delKit(${k.id})">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty">No kits found</td></tr>';
+  fillSelects();
+}
+async function fillSelects(){
+  const [kits,players,loans]=await Promise.all([fetch('/kits').then(r=>r.json()),fetch('/players').then(r=>r.json()),fetch('/loans').then(r=>r.json())]);
+  const busy=new Set(loans.filter(l=>!l.returned_on).map(l=>l.kit_name));
+  $('lplayer').innerHTML=players.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')||'<option value="">Add a player first</option>';
+  $('lkit').innerHTML=kits.map(k=>`<option value="${k.id}">${esc(k.name)}${busy.has(k.name)?' (issued)':''}</option>`).join('')||'<option value="">Add a kit first</option>';
+}
+async function saveKit(){
+  const body={name:$('kname').value,sport:$('ksport').value};
+  try{
+    if(editingId){await api('PUT','/kits/'+editingId,body);toast('Kit updated',true);}
+    else{await api('POST','/kits',body);toast('Kit added',true);}
+    resetKit();loadKits();
+  }catch(e){}
+}
+function editKit(k){editingId=k.id;$('kname').value=k.name;$('ksport').value=k.sport;$('kbtn').textContent='Save changes';$('kcancel').style.display='';}
+function resetKit(){editingId=null;$('kname').value='';$('ksport').value='';$('kbtn').textContent='Add kit';$('kcancel').style.display='none';}
+async function delKit(id){if(!confirm('Delete kit '+id+'?'))return;try{await api('DELETE','/kits/'+id);toast('Kit deleted',true);loadKits();}catch(e){}}
+async function loadPlayers(){const p=await fetch('/players').then(r=>r.json());
+  $('players').innerHTML=p.length?p.map(x=>`<tr><td>${x.id}</td><td>${esc(x.name)}</td><td>${esc(x.team)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No players yet</td></tr>';}
+async function addPlayer(){try{await api('POST','/players',{name:$('pname').value,team:$('pteam').value});$('pname').value='';$('pteam').value='';toast('Player added',true);loadPlayers();fillSelects();}catch(e){}}
+async function loadLoans(){
+  const s=$('lsearch').value.trim();const l=await fetch('/loans'+(s?'?player='+encodeURIComponent(s):'')).then(r=>r.json());
+  $('loans').innerHTML=l.length?l.map(x=>`<tr><td>${x.id}</td><td>${esc(x.player_name)}</td><td>${esc(x.kit_name)}</td><td>${x.issued_on}</td><td>${x.returned_on?`<span class="tag in">Returned ${x.returned_on}</span>`:'<span class="tag out">With player</span>'}</td><td>${x.returned_on?'':`<button class="sm" onclick="ret(${x.id})">Return</button>`}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">No loans yet</td></tr>';
+}
+async function issue(){try{await api('POST','/loans',{player_id:Number($('lplayer').value),kit_id:Number($('lkit').value)});toast('Kit issued',true);loadLoans();fillSelects();}catch(e){}}
+async function ret(id){try{await api('PUT','/loans/'+id+'/return');toast('Kit returned',true);loadLoans();fillSelects();}catch(e){}}
+loadKits();loadPlayers();loadLoans();
+</script>
+</body>
+</html>
